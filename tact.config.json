@@ -1,0 +1,36 @@
+{
+    "projects": [
+        {
+            "name": "BondCurveJetton",
+            "path": "./sources/BondCurveJetton.tact",
+            "output": "./sources/output",
+            "options": {
+                "debug": true
+            }
+        },
+        {
+            "name": "FairMintJetton",
+            "path": "./sources/FairMintJetton.tact",
+            "output": "./sources/output",
+            "options": {
+                "debug": true
+            }
+        },
+        {
+            "name": "ReferrerParent",
+            "path": "./sources/ReferrerParent.tact",
+            "output": "./sources/output",
+            "options": {
+                "debug": true
+            }
+        },
+        {
+            "name": "Payouts",
+            "path": "./sources/Payouts.tact",
+            "output": "./sources/output",
+            "options": {
+                "debug": true
+            }
+        }
+    ]
+}
