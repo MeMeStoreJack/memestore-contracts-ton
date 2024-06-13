@@ -132,11 +132,8 @@ contract BondCurveJetton with Jetton, Resumable {
         emit(TradeStepEvent{trade_step: self.trade_step}.toCell());
         if (msg.buy_ton_value > 0) {
             require(context().value >= msg.buy_ton_value + ton("0.5"), "insufficient pay for gas");
-            let amt: Int = self.init_buy_amount(msg.buy_ton_value);
-            let supply: Int = self.this_supply;
-            require(amt <= supply, "Insufficient token balance");
             require(msg.max_buy_percent <= 1000, "percent must be <= 1000");
-            require(amt * 1000 <= msg.max_buy_percent * supply, "exceed max percent"); // amt / supply <= percent / 1000
+            require(msg.buy_ton_value * 1000 <= self.trade_config.target_amount * msg.max_buy_percent, "exceed max percent"); // buy_ton_value / target_amount <= max_buy_percent / 1000
             self.buy(Buy{ton_value: msg.buy_ton_value}, self.issuer);
         }
     }
