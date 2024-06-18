@@ -1,10 +1,10 @@
 import { contractAddress, toNano, TonClient4, WalletContractV4, internal, fromNano, Address, beginCell, BitString, Cell } from "@ton/ton";
 import { mnemonicToPrivateKey, sign, signVerify, keyPairFromSeed, keyPairFromSecretKey } from "ton-crypto";
 
-import { PayoutsMaster } from "./output/Payouts_PayoutsMaster";
+import { PayoutsMaster, WithdrawTicket, WithdrawTicketContent, storeWithdrawTicket } from "./output/Payouts_PayoutsMaster";
 import { PayoutBeacon } from "./output/Payouts_PayoutBeacon";
 
-import { createUniqTicket } from "./Payouts.tickets"
+import { createUniqTicket, createTonWithdrawTicketMsg } from "./Payouts.tickets"
 
 import { printSeparator } from "./utils/print";
 import * as dotenv from "dotenv";
@@ -50,27 +50,23 @@ dotenv.config();
     printSeparator();
     // return;
 
-    // Payouts address: kQAiL_EralRCIRBPR4o4uF25x87AVcBBqA_oEf9qawDXOTVc
-    // payout0 txid: b0b38406e7f16db8d02347c132f7aff82f990c993fa5b07edebc93e7bfd52c06
-    // payout1 txid: 0041cb5d41ca0f23c0bedbc384fc4ee7c49a89b085e3cb188f2e37d494d3b826
-    // payout2 txid: 1a77ceacc3f2d4e03092e10d020d8e217d9ad168d3530eb569b22d2edcbaed01
-    await deployer_wallet_contract.sendTransfer({
-        seqno,
-        secretKey,
-        messages: [
-            internal({
-                to: jettonMaster,
-                value: fairMintAmount,
-                init: {
-                    code: init.code,
-                    data: init.data,
-                },
-                body: "deploy",
-            }),
-        ],
-    });
-    console.log("====== deploy message sent to =======\n", jettonMaster);
-    return;
+    // await deployer_wallet_contract.sendTransfer({
+    //     seqno,
+    //     secretKey,
+    //     messages: [
+    //         internal({
+    //             to: jettonMaster,
+    //             value: fairMintAmount,
+    //             init: {
+    //                 code: init.code,
+    //                 data: init.data,
+    //             },
+    //             body: "deploy",
+    //         }),
+    //     ],
+    // });
+    // console.log("====== deploy message sent to =======\n", jettonMaster);
+    // return;
 
     let sender = deployer_wallet.address;
     console.log("sender", sender);
@@ -81,11 +77,10 @@ dotenv.config();
     let payout_id = BigInt(1111);
     let payout_id2 = BigInt(2222);
     let payout_id3 = BigInt(3333);
-    let msg = createUniqTicket(sender, amount, BigInt(0), oneWeekLater, payout_id, keyPair.secretKey);
-    // let msg = createUniqTicket(sender, amount, BigInt(1), oneWeekLater, payout_id2, keyPair.secretKey);
-    // let msg = createUniqTicket(sender, amount, BigInt(2), oneWeekLater, payout_id3, keyPair.secretKey);
-    // console.log(msg);
-    // return;
+    let withdrawTicket = createTonWithdrawTicketMsg(sender, amount, BigInt(0), oneWeekLater, payout_id, keyPair.secretKey);
+    let my_packed_ticket_msg = beginCell().store(storeWithdrawTicket(withdrawTicket)).endCell();
+    console.log("my_packed_ticket_msg: ", my_packed_ticket_msg.toBoc().toString("base64"));
+    return;
 
     await deployer_wallet_contract.sendTransfer({
         seqno: seqno,
@@ -98,7 +93,7 @@ dotenv.config();
                     code: init.code,
                     data: init.data,
                 },
-                body: msg,
+                body: my_packed_ticket_msg,
             }),
         ],
     });

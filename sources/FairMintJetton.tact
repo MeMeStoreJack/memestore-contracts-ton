@@ -186,6 +186,20 @@ contract FairMintJetton with Jetton, Resumable {
         return self.trade_step;
     }
 
+    // supply that already minted
+
+    get fun total_supply(): Int {
+        return self.total_supply;
+    }
+
+    get fun this_balance(): Int {
+        return self.this_balance;
+    }
+
+    get fun trade_config(): TradeConfig {
+        return self.trade_config;
+    }
+
     // receive("Resume") is added automatically to allow owner to resume the contract
     // receive("Stop") is added automatically to allow owner to stop the contract
     // get fun stopped(): Bool is added automatically to query if contract is stopped

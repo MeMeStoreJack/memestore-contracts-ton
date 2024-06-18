@@ -53,6 +53,12 @@ struct TradeInfo {
     remain_amount: Int as coins;
 }
 
+struct EstimateSellResult {
+    trade_ton_fee: Int as coins; // in ton
+    referrer_ton_fee: Int as coins; // in ton, include referrer and upreferrer
+    remain_value: Int as coins; // in ton
+}
+
 message SetTradeConfig {
     trade_config: TradeConfig;
 }
@@ -413,6 +419,15 @@ contract BondCurveJetton with Jetton, Resumable {
 
     get fun init_buy_token_amount(ton_value: Int): Int {
         return self.init_buy_amount(ton_value);
+    }
+
+    get fun estimate_sell_result(token_amount: Int): EstimateSellResult {
+        let ton_amount: Int = self.get_amount_out(token_amount, false, self.this_balance, self.this_supply);
+        return EstimateSellResult{
+            trade_ton_fee: ton_amount * self.trade_config.trade_fee_percent / 1000,
+            referrer_ton_fee: ton_amount * (self.trade_config.referrer_percent + self.trade_config.up_referrer_percent) / 1000,
+            remain_value: ton_amount - (ton_amount * (self.trade_config.trade_fee_percent + self.trade_config.referrer_percent + self.trade_config.up_referrer_percent) / 1000)
+        };
     }
 
     // receive("Resume") is added automatically to allow owner to resume the contract

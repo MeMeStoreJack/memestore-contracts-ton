@@ -30,6 +30,19 @@ message EventPayoutCompleted {
     payout_id: Int as uint64;
 }
 
+message WithdrawTicketContent {
+    address: Address;
+    value: Int as uint64;
+    nonce: Int as uint64;
+    expire: Int as uint64;
+    payout_id: Int as uint64;
+}
+
+message WithdrawTicket {
+    ticket: WithdrawTicketContent;
+    signature: Slice;
+}
+
 contract PayoutBeacon with Ownable, Deployable {
     override const storageReserve: Int = ton("0.1");
 
@@ -90,33 +103,14 @@ contract PayoutsMaster with Deployable, Ownable, Resumable {
     // Payout operations
     //
 
-    receive(withdraw: String) {
-        // Normalize
-        withdraw = normalizeKey(withdraw);
-
+    receive(msg: WithdrawTicket){
         self.requireNotStopped();
         let ctx: Context = context();
         require(ctx.value >= ton("1.0"), "Invalid value");
-
-        // Parse the withdraw message
-        let msg: Slice = withdraw.fromBase64();
-        let signature: Slice = msg.loadBits(512);
-        let value: Int = msg.loadCoins();
-        let nonce: Int = msg.loadUint(64);
-        let expire: Int = msg.loadUint(64);
-        let payout_id: Int = msg.loadUint(64);
-        require(expire >= now(), "Expired signature");
-
-        // Verify the signature
-        let sigCell: Cell = beginCell()
-            .storeAddress(ctx.sender)
-            .storeCoins(value)
-            .storeUint(nonce, 64)
-            .storeUint(expire, 64)
-            .storeUint(payout_id, 64)
-            .endCell();
-        let hash: Int = sigCell.hash();
-        require(checkSignature(hash, signature, self.publicKey), "Invalid signature");
+        let hash: Int = msg.ticket.toCell().hash();
+        let value: Int = msg.ticket.value;
+        require(msg.ticket.expire >= now(), "Expired");
+        require(checkSignature(hash, msg.signature, self.publicKey), "Invalid signature");
 
         // Check min value
         require(value >= self.withdrawMinValue, "Check withdraw min value");
@@ -127,7 +121,7 @@ contract PayoutsMaster with Deployable, Ownable, Resumable {
         // Send message to beacon
         let init: StateInit = initOf PayoutBeacon(ctx.sender, myAddress());
         let address: Address = contractAddress(init);
-        self.forward(address, TryPayout{ address: ctx.sender, value: value, nonce: nonce, payout_id: payout_id }.toCell(), true, init);
+        self.forward(address, TryPayout{ address: ctx.sender, value: value, nonce: msg.ticket.nonce, payout_id: msg.ticket.payout_id }.toCell(), true, init);
     }
 
     receive(ok: PayoutOk) {
@@ -206,21 +200,8 @@ contract PayoutsMaster with Deployable, Ownable, Resumable {
     get fun publicKey(): Int {
         return self.publicKey;
     }
-}
 
-fun normalizeKey(src: String): String {
-    let out: Builder = beginCell();
-    let slice: Slice = src.asSlice();
-    while(slice.bits() > 0 || slice.refs() > 0) {
-        require(slice.bits() % 8 == 0 && slice.refs() <= 1, "Invalid string");
-        if (slice.bits() > 0) {
-            let ch: Int = slice.loadUint(8);
-            if (ch >= 33 && ch <= 126) {
-                out = out.storeUint(ch, 8);
-            }
-        } else {
-            slice = slice.loadRef().beginParse();
-        }
+    get fun get_wallet_address(owner: Address): Address {
+        return contractAddress(initOf PayoutBeacon(owner, myAddress()));
     }
-    return out.asSlice().asString();
 }
