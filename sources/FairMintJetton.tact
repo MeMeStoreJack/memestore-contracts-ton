@@ -37,6 +37,7 @@ contract FairMintJetton with Jetton, Resumable {
     stopped: Bool; // The Stoppable trait requires you to add this exact state variable
     content: Cell;
     mintable: Bool;
+    transferable: Bool;
     max_supply: Int as coins; // Extract parameter we set here. The Jetton Standards doesn't have this parameter.
 
     mint_config: MintConfig;
@@ -55,6 +56,7 @@ contract FairMintJetton with Jetton, Resumable {
         self.owner = owner;
         self.stopped = false;
         self.mintable = true;
+        self.transferable = false;
         self.content = content;
         self.max_supply = max_supply;
         self.mint_config = mint_config;
@@ -98,6 +100,7 @@ contract FairMintJetton with Jetton, Resumable {
         if ((self.total_supply + self.mint_config.single_mint_min) > self.mint_config.mint_supply) {
             self.trade_step = 2;
             emit(TradeStepEvent{trade_step: self.trade_step}.toCell());
+            self.transferable = true;
             self.pool_token_amount = self.this_balance * ton("1") / self.mint_config.liquidity_price;
             self.mint(myAddress(), self.pool_token_amount, self.owner);
         }

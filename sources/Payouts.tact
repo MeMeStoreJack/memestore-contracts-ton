@@ -69,7 +69,6 @@ contract PayoutBeacon with Ownable, Deployable {
 
     bounced(msg: bounced<PayoutOk>) {
         // Reset nonce if our message bounced
-        self.nonce -= 1;
         self.forward(self.owner, "Payout failed".asComment(), false, null);
     }
 
@@ -132,7 +131,7 @@ contract PayoutsMaster with Deployable, Ownable, Resumable {
         require(context().sender == beaconAddress, "Invalid sender");
 
         // Require required balance
-        require(myBalance() > ton("1.0") + self.storageReserve + ok.value, "Insufficient balance on master");
+        require(myBalance() - context().value > ton("1.0") + self.storageReserve + ok.value, "Insufficient balance on master");
 
         // Emit event
         emit(EventPayoutCompleted{ address: ok.address, value: ok.value, nonce: ok.nonce, payout_id: ok.payout_id }.toCell());
@@ -188,7 +187,7 @@ contract PayoutsMaster with Deployable, Ownable, Resumable {
         self.requireOwner();
         send(SendParameters{
             value: 0, 
-            mode: SendRemainingBalance + SendDestroyIfZero,
+            mode: SendRemainingBalance | SendDestroyIfZero,
             to: self.owner, 
             bounce: false,
             body: "Contract destroyed".asComment()

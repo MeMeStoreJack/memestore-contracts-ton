@@ -8,6 +8,7 @@ trait Jetton with Ownable, Deployable {
     mintable: Bool;
     owner: Address;
     content: Cell;
+    transferable: Bool;
 
     receive(msg: TokenUpdateContent){
         self.requireOwner(); // Allow changing content only by owner
@@ -67,6 +68,25 @@ trait Jetton with Ownable, Deployable {
         self.mintable = false;
     }
 
+    receive(msg: CheckTransfer) {
+        let ctx: Context = context();
+        let init: StateInit = initOf JettonDefaultWallet(msg.req, myAddress());
+        require(contractAddress(init) == ctx.sender, "CheckTransfer: Sender is not a jetton wallet"); // TODO:
+        send(
+            SendParameters{
+                to: ctx.sender,
+                value: 0,
+                bounce: false,
+                mode: SendRemainingValue | SendIgnoreErrors,
+                body: CheckTransferReply{
+                    req: msg.req,
+                    res: self.transferable,
+                    token_transfer: msg.token_transfer,
+                }.toCell()
+            }
+        );
+    }
+
     // Private Methods
     // @to The Address receive the Jetton token after minting
     // @amount The amount of Jetton token being minted
@@ -80,7 +100,6 @@ trait Jetton with Ownable, Deployable {
                 to: contractAddress(winit),
                 value: ton("0.1"),
                 bounce: true,
-                // mode: SendRemainingValue,
                 mode: SendIgnoreErrors,
                 body: TokenTransferInternal{
                     query_id: 0,
@@ -162,6 +181,41 @@ contract JettonDefaultWallet
     receive(){}
 
     receive(msg: TokenTransfer){
+        if (msg.destination == self.master || context().sender == self.master) {
+            let token_transfer_struct: TokenTransferStruct = TokenTransferStruct{
+                query_id: msg.query_id,
+                amount: msg.amount,
+                destination: msg.destination,
+                response_destination: msg.response_destination,
+                custom_payload: msg.custom_payload,
+                forward_ton_amount: msg.forward_ton_amount,
+                forward_payload: msg.forward_payload,
+            };
+            self.token_transfer(token_transfer_struct);
+        } else {
+            send(SendParameters{
+                    to: self.master,
+                    value: 0,
+                    bounce: true,
+                    mode: SendRemainingValue | SendIgnoreErrors,
+                    body: CheckTransfer{
+                        req: context().sender,
+                        token_transfer: TokenTransferStruct {
+                            query_id: msg.query_id,
+                            amount: msg.amount,
+                            destination: msg.destination,
+                            response_destination: msg.response_destination,
+                            custom_payload: msg.custom_payload,
+                            forward_ton_amount: msg.forward_ton_amount,
+                            forward_payload: msg.forward_payload,
+                        }
+                    }.toCell()
+                }
+            );
+        }
+    }
+
+    fun token_transfer(msg: TokenTransferStruct) {
         // 0xf8a7ea5
         let ctx: Context = context(); // Check sender
         require(ctx.sender == self.owner || ctx.sender == self.master, "meme: Invalid sender");
@@ -202,17 +256,18 @@ contract JettonDefaultWallet
         // Get value for gas
         let msg_value: Int = self.msg_value(ctx.value);
         let fwd_fee: Int = ctx.readForwardFee();
+
         if (msg.forward_ton_amount > 0) {
             msg_value = ((msg_value - msg.forward_ton_amount) - fwd_fee);
             send(SendParameters{
-                    to: self.owner,
+                    to: self.master,
                     value: msg.forward_ton_amount,
-                    mode: SendPayGasSeparately,
+                    mode: SendIgnoreErrors,
                     bounce: false,
-                    body: TokenNotification{ // 0x7362d09c -- Remind the new Owner
+                    body: JettonTransferNotification{ // 0x7362d09c -- Remind the new Owner
                         query_id: msg.query_id,
                         amount: msg.amount,
-                        from: msg.from,
+                        sender: msg.from,
                         forward_payload: msg.forward_payload
                     }.toCell()
                 }
@@ -269,11 +324,19 @@ contract JettonDefaultWallet
         send(SendParameters{
                 to: self.master,
                 bounce: true,
-                value: ton("0.3"),
-                mode: SendIgnoreErrors,
+                value: 0,
+                mode: SendRemainingValue | SendIgnoreErrors,
                 body: SellInternalReply{sender_from: self.owner, amount: msg.amount}.toCell()
             }
         );
+    }
+
+    receive(msg: CheckTransferReply) {
+        let ctx: Context = context();
+        require(ctx.sender == self.master, "transfer_check_from is not jetton master");
+        if (msg.res) {
+            self.token_transfer(msg.token_transfer);
+        }
     }
 
     fun msg_value(value: Int): Int {

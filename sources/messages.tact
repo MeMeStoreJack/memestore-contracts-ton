@@ -32,11 +32,11 @@ message(0x178d4519) TokenTransferInternal {
     forward_ton_amount: Int as coins;
     forward_payload: Slice as remaining;
 }
-message(0x7362d09c) TokenNotification {
-    query_id: Int as uint64;
-    amount: Int as coins;
-    from: Address;
-    forward_payload: Slice as remaining;
+message(0x7362d09c) JettonTransferNotification {
+    query_id: Int as uint64;                // arbitrary request number
+    amount: Int as coins;                   // amount of jettons to transfer
+    sender: Address;                        // address of the sender of the jettons
+    forward_payload: Slice as remaining;    // optional custom payload
 }
 // burn#595f07bc query_id:uint64 amount:(VarUInteger 16)
 //               response_destination:MsgAddress custom_payload:(Maybe ^Cell)
@@ -81,4 +81,25 @@ message SellInternal {
 message SellInternalReply {
     sender_from: Address;
     amount: Int as coins;
+}
+
+struct TokenTransferStruct {
+    query_id: Int;
+    amount: Int;
+    destination: Address;
+    response_destination: Address?;
+    custom_payload: Cell?;
+    forward_ton_amount: Int;
+    forward_payload: Slice;
+}
+
+message CheckTransfer{
+    req: Address;
+    token_transfer: TokenTransferStruct;
+}
+
+message CheckTransferReply{
+    req: Address;
+    res: Bool;
+    token_transfer: TokenTransferStruct;
 }
