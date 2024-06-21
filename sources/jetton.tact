@@ -71,7 +71,7 @@ trait Jetton with Ownable, Deployable {
     receive(msg: CheckTransfer) {
         let ctx: Context = context();
         let init: StateInit = initOf JettonDefaultWallet(msg.req, myAddress());
-        require(contractAddress(init) == ctx.sender, "CheckTransfer: Sender is not a jetton wallet"); // TODO:
+        require(contractAddress(init) == ctx.sender, "CheckTransfer: Sender is not a jetton wallet");
         send(
             SendParameters{
                 to: ctx.sender,

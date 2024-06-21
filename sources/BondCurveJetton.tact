@@ -263,7 +263,7 @@ contract BondCurveJetton with Jetton, Resumable {
                 destination: myAddress(),
                 response_destination: null,
                 custom_payload: null,
-                forward_ton_amount: ton("0.3"),
+                forward_ton_amount: ton("0.05"),
                 forward_payload: beginCell().endCell().asSlice()
             }.toCell(),
             code: init.code,
