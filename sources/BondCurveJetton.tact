@@ -199,7 +199,6 @@ contract BondCurveJetton with Jetton, Resumable {
         if (self.this_balance >= self.trade_config.target_amount) {
             self.trade_step = 2;
             emit(TradeStepEvent{trade_step: 2}.toCell());
-            self.transferable = true;
 
             let pool_receiver_balance: Int = self.this_balance * 5 / 100;
             send(SendParameters{
@@ -281,9 +280,9 @@ contract BondCurveJetton with Jetton, Resumable {
 
     receive("add_ton_v4"){
         require(self.trade_step == 2, "not add ton liquidity");
-        self.sendTonToWalletV4(self.pool_liquidity, 1);
         self.trade_step = 3;
         emit(TradeStepEvent{trade_step: 3}.toCell());
+        self.sendTonToWalletV4(self.pool_liquidity, 1);
     }
 
     receive("add_meme_v4"){
@@ -293,34 +292,44 @@ contract BondCurveJetton with Jetton, Resumable {
         emit(TradeStepEvent{trade_step: 4}.toCell());
     }
 
+    receive("transferable") {
+        require(context().sender == self.owner, "not owner");
+        require(self.trade_step == 4, "liquidity not added");
+        self.transferable = true;
+        self.trade_step = 5;
+        emit(TradeStepEvent{trade_step: 5}.toCell());
+    }
+
     receive(msg: JettonTransferNotification) {
-        let ctx: Context = context();
-        let init_state: StateInit = initOf JettonDefaultWallet(myAddress(), myAddress());
-        require(ctx.sender == contractAddress(init_state), "contract sender is not from child");
+        if (self.trade_step == 1) {
+            let ctx: Context = context();
+            let init_state: StateInit = initOf JettonDefaultWallet(myAddress(), myAddress());
+            require(ctx.sender == contractAddress(init_state), "contract sender is not from child");
 
-        let ton_amount: Int = self.get_amount_out(msg.amount, false, self.this_balance, self.this_supply);
-        self.this_balance = self.this_balance - ton_amount;
-        let last_token_price: Int = (ton_amount * ton("1")) / msg.amount;
-        let trade_info: TradeInfo = self.split_fee(ton_amount);
-        self.this_supply += msg.amount;
+            let ton_amount: Int = self.get_amount_out(msg.amount, false, self.this_balance, self.this_supply);
+            self.this_balance = self.this_balance - ton_amount;
+            let last_token_price: Int = (ton_amount * ton("1")) / msg.amount;
+            let trade_info: TradeInfo = self.split_fee(ton_amount);
+            self.this_supply += msg.amount;
 
-        send(SendParameters{
-            to: self.trade_fee_receiver,
-            bounce: true,
-            value: trade_info.fee_value + trade_info.referrer_amount + trade_info.up_referrer_amount + ton("0.01"),
-            mode:  SendIgnoreErrors,
-            body: "trade+referrer fee".asComment()
-        });
+            send(SendParameters{
+                to: self.trade_fee_receiver,
+                bounce: true,
+                value: trade_info.fee_value + trade_info.referrer_amount + trade_info.up_referrer_amount + ton("0.01"),
+                mode:  SendIgnoreErrors,
+                body: "trade+referrer fee".asComment()
+            });
 
-        send(SendParameters{
-            to: msg.sender,
-            bounce: false,
-            value: trade_info.remain_amount + ton("0.01"),
-            mode:  SendIgnoreErrors,
-            body: "remain amount".asComment()
-        });
-        emit(SellEvent{sender: msg.sender, amount: trade_info.remain_amount, tokenAmount: msg.amount, lastTokenPrice: last_token_price, tradeInfo: trade_info}.toCell());
-        self.forward(msg.sender, "Sell finish".asComment(), false, null);
+            send(SendParameters{
+                to: msg.sender,
+                bounce: false,
+                value: trade_info.remain_amount + ton("0.01"),
+                mode:  SendIgnoreErrors,
+                body: "remain amount".asComment()
+            });
+            emit(SellEvent{sender: msg.sender, amount: trade_info.remain_amount, tokenAmount: msg.amount, lastTokenPrice: last_token_price, tradeInfo: trade_info}.toCell());
+            self.forward(msg.sender, "Sell finish".asComment(), false, null);
+        }
     }
 
     fun split_fee(amount: Int): TradeInfo {
@@ -391,8 +400,8 @@ contract BondCurveJetton with Jetton, Resumable {
         send(SendParameters{
             to: self.trade_config.router_pton_wallet,
             bounce: false,
-            value: self.trade_config.ton_value_add_pton,
-            mode: SendPayGasSeparately,
+            value: 0,
+            mode: SendRemainingValue | SendIgnoreErrors,
             body: TokenTransfer {
                 query_id: 0,
                 amount: ton_amount,

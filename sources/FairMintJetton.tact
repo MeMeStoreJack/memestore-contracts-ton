@@ -90,7 +90,7 @@ contract FairMintJetton with Jetton, Resumable {
         send(SendParameters{
                 to: self.protocol_receiver,
                 bounce: true,
-                value: msg.ton_value * 5 / 100,
+                value: msg.ton_value * 5 / 100 + ton("0.01"),
                 mode: SendIgnoreErrors,
                 body: "5% to protocol receiver".asComment()
             }
@@ -100,7 +100,6 @@ contract FairMintJetton with Jetton, Resumable {
         if ((self.total_supply + self.mint_config.single_mint_min) > self.mint_config.mint_supply) {
             self.trade_step = 2;
             emit(TradeStepEvent{trade_step: self.trade_step}.toCell());
-            self.transferable = true;
             self.pool_token_amount = self.this_balance * ton("1") / self.mint_config.liquidity_price;
             self.mint(myAddress(), self.pool_token_amount, self.owner);
         }
@@ -118,9 +117,9 @@ contract FairMintJetton with Jetton, Resumable {
 
     receive("add_ton_v4"){
         require(self.trade_step == 2, "not add ton liquidity");
-        self.sendTonToWalletV4(self.this_balance, 1);
         self.trade_step = 3;
         emit(TradeStepEvent{trade_step: 3}.toCell());
+        self.sendTonToWalletV4(self.this_balance, 1);
     }
 
     receive("add_meme_v4"){
@@ -129,6 +128,16 @@ contract FairMintJetton with Jetton, Resumable {
         self.trade_step = 4;
         emit(TradeStepEvent{trade_step: 4}.toCell());
     }
+
+    receive("transferable") {
+        require(context().sender == self.owner, "not owner");
+        require(self.trade_step == 4, "liquidity not added");
+        self.transferable = true;
+        self.trade_step = 5;
+        emit(TradeStepEvent{trade_step: 5}.toCell());
+    }
+
+    receive(msg: JettonTransferNotification) {}
 
     fun sendMemeToWalletV4(tokenAddr: Address, otherTokenAddr: Address, tokenAmount: Int, minLPOut: Int) {
         let init_a: StateInit = initOf JettonDefaultWallet(myAddress(), myAddress()); // owner, master
@@ -166,9 +175,9 @@ contract FairMintJetton with Jetton, Resumable {
         send(SendParameters{
                 to: self.trade_config.router_pton_wallet,
                 bounce: false,
-                value: self.trade_config.ton_value_add_pton,
-                mode: SendPayGasSeparately,
-                body: TokenTransfer{
+                value: 0,
+                mode: SendRemainingValue | SendIgnoreErrors,
+                body: TokenTransfer {
                     query_id: 0,
                     amount: ton_amount,
                     destination: self.trade_config.swap_router,

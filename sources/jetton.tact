@@ -172,16 +172,18 @@ contract JettonDefaultWallet
     balance: Int as coins = 0;
     owner: Address;
     master: Address;
+    transferable: Bool;
     init(owner: Address, master: Address){
         self.balance = 0;
         self.owner = owner;
         self.master = master;
+        self.transferable = false;
     }
 
     receive(){}
 
     receive(msg: TokenTransfer){
-        if (msg.destination == self.master || context().sender == self.master) {
+        if (msg.destination == self.master || context().sender == self.master || self.transferable) {
             let token_transfer_struct: TokenTransferStruct = TokenTransferStruct{
                 query_id: msg.query_id,
                 amount: msg.amount,
@@ -260,7 +262,7 @@ contract JettonDefaultWallet
         if (msg.forward_ton_amount > 0) {
             msg_value = ((msg_value - msg.forward_ton_amount) - fwd_fee);
             send(SendParameters{
-                    to: self.master,
+                    to: self.owner,
                     value: msg.forward_ton_amount,
                     mode: SendIgnoreErrors,
                     bounce: false,
@@ -334,6 +336,7 @@ contract JettonDefaultWallet
     receive(msg: CheckTransferReply) {
         let ctx: Context = context();
         require(ctx.sender == self.master, "transfer_check_from is not jetton master");
+        self.transferable = msg.res;
         if (msg.res) {
             self.token_transfer(msg.token_transfer);
         }
