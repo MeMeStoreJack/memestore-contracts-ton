@@ -1,4 +1,4 @@
-import { beginCell, contractAddress, toNano, TonClient4, WalletContractV4, internal, fromNano, Address } from "@ton/ton";
+import { beginCell, contractAddress, toNano, TonClient4, WalletContractV4, internal, fromNano, Address, Cell } from "@ton/ton";
 import { mnemonicToPrivateKey } from "ton-crypto";
 import { buildOnchainMetadata } from "./utils/jetton-helpers";
 
@@ -8,8 +8,15 @@ import { JettonDefaultWallet, TokenBurn } from "./output/FairMintJetton_JettonDe
 import { printSeparator } from "./utils/print";
 import * as dotenv from "dotenv";
 import { storeFairMint } from "./output/FairMintJetton_FairMintJetton";
+import { storeDirectAddLiquidity } from "./output/BondCurveJetton_BondCurveJetton";
 dotenv.config();
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+type BodyValue = {
+    body: string | Cell,
+    value: bigint,
+}
 
 (async () => {
     //create client for testnet sandboxv4 API - alternative endpoint
@@ -23,11 +30,11 @@ dotenv.config();
 
     let mint_config: MintConfig = {
         $$type: "MintConfig",
-        mint_supply: toNano("100000"),
+        mint_supply: toNano("1"),
         mint_price: toNano("0.01"),
         single_mint_min: toNano("1"),
         single_mint_max: toNano("100"),
-        mint_max: toNano("100000"),
+        mint_max: toNano("100000"), // 0.72
         end_timestamp: 1000000000000n,
         liquidity_price: toNano("0.01"),
     }
@@ -37,9 +44,9 @@ dotenv.config();
         swap_router: Address.parse("EQBsGx9ArADUrREB34W-ghgsCgBShvfUr4Jvlu-0KGc33Rbt"),
         target_amount: toNano("1000"),
         proxy_ton: Address.parse("kQAcOvXSnnOhCdLYc6up2ECYwtNNTzlmOlidBeCs5cFPV7AM"), // testnet proxy ton
-        ton_value_add_meme: toNano("0.3"),
+        ton_value_add_meme: toNano("0.5"),
         ton_value_add_pton: toNano("0.3"),
-        router_pton_wallet: Address.parse("EQARULUYsmJq1RiZ-YiH-IJLcAZUVkVff-KBPwEmmaQGH6aC"), // mainnet router pton wallet
+        router_pton_wallet: Address.parse("kQCdC2b1GG1saybYxCwRfEqr4WlOexsQIcYcfMYObk_477vs"), // testnet router pton wallet
     }
 
     let mnemonics = (process.env.mnemonics_2 || "").toString(); // 🔴 Change to your own, by creating .env file!
@@ -67,7 +74,7 @@ dotenv.config();
     // Compute init data for deployment
     // NOTICE: the parameters inside the init functions were the input for the contract address
     // which means any changes will change the smart contract address as well
-    let init = await FairMintJetton.init(deployer_wallet_contract.address, content, max_supply, mint_config, trade_config, deployer_wallet_contract.address);
+    let init = await FairMintJetton.init(deployer_wallet_contract.address, content, max_supply, mint_config, trade_config, deployer_wallet_contract.address, deployer_wallet_contract.address);
     let jettonMaster = contractAddress(workchain, init);
     let deployAmount = toNano("0.15");
     let fairMintAmount = toNano("0.15");
@@ -113,21 +120,40 @@ dotenv.config();
     //     ],
     // });
     // console.log("====== Deployment message sent to =======\n", jettonMaster);
+    let bodies: BodyValue[] = [
+        {
+            body: packed_fair_mint_msg,
+            value: toNano("0.5"),
+        },{
+            body: "add_ton_v4",
+            value: toNano("0.54"),
+        }, {
+            body: "add_meme_v4",
+            value: toNano("0.7"),
+        }, {
+            body: "transferable",
+            value: toNano("0.1"),
+        }
+    ];
 
-    await deployer_wallet_contract.sendTransfer({
-        seqno,
-        secretKey,
-        messages: [
-            internal({
-                to: jettonMaster,
-                value: fairMintAmount,
-                init: {
-                    code: init.code,
-                    data: init.data,
-                },
-                body: packed_fair_mint_msg,
-            }),
-        ],
-    });
+    for (let i = 0; i < bodies.length; i++) {
+        await deployer_wallet_contract.sendTransfer({
+            seqno: seqno + i,
+            secretKey,
+            messages: [
+                internal({
+                    to: jettonMaster,
+                    value: bodies[i].value,
+                    init: {
+                        code: init.code,
+                        data: init.data,
+                    },
+                    body: bodies[i].body,
+                }),
+            ],
+        });
+        await sleep(30000);
+    }
+
     console.log("====== fairmint message sent to =======\n", jettonMaster);
 })();

@@ -46,12 +46,14 @@ contract FairMintJetton with Jetton, Resumable {
     trade_step: Int as uint8; // 0: init, 1: mint, 2: trade, 3: add ton, 4: add meme
     this_balance: Int as coins;
     pool_token_amount: Int as coins;
+    backend_bot: Address;
     init(owner: Address,
         content: Cell,
         max_supply: Int,
         mint_config: MintConfig,
         trade_config: TradeConfig,
-        protocol_receiver: Address){
+        protocol_receiver: Address,
+        backend_bot: Address){
         self.total_supply = 0;
         self.owner = owner;
         self.stopped = false;
@@ -63,10 +65,12 @@ contract FairMintJetton with Jetton, Resumable {
         require(trade_config.swap_router != newAddress(0, 0), "swapRouter is zero");
         self.trade_config = trade_config;
         require(protocol_receiver != newAddress(0, 0), "protocolReceiver is zero");
+        require(backend_bot != newAddress(0, 0), "backendBot is zero");
         self.protocol_receiver = protocol_receiver;
         self.trade_step = 0;
         self.this_balance = 0;
         self.pool_token_amount = 0;
+        self.backend_bot = backend_bot;
         emit(TradeStepEvent{trade_step: 0}.toCell());
     }
 
@@ -87,14 +91,16 @@ contract FairMintJetton with Jetton, Resumable {
         require(msg.ton_value * ton("1") >= self.mint_config.mint_price * msg.amount, "insufficient pay");
         require(ctx.value >= msg.ton_value, "insufficient pay for gas");
         require(now() <= self.mint_config.end_timestamp, "Expired");
-        send(SendParameters{
-                to: self.protocol_receiver,
-                bounce: true,
-                value: msg.ton_value * 5 / 100 + ton("0.01"),
-                mode: SendIgnoreErrors,
-                body: "5% to protocol receiver".asComment()
-            }
-        );
+        if (msg.ton_value * 5 / 100 >= ton("0.01")) {
+            send(SendParameters{
+                    to: self.protocol_receiver,
+                    bounce: true,
+                    value: msg.ton_value * 5 / 100,
+                    mode: SendIgnoreErrors,
+                    body: "5% to protocol receiver".asComment()
+                }
+            );
+        }
         self.this_balance += (msg.ton_value - msg.ton_value * 5 / 100);
         self.mint(msg.receiver, msg.amount, self.owner);
         if ((self.total_supply + self.mint_config.single_mint_min) > self.mint_config.mint_supply) {
@@ -116,25 +122,43 @@ contract FairMintJetton with Jetton, Resumable {
     }
 
     receive("add_ton_v4"){
-        require(self.trade_step == 2, "not add ton liquidity");
+        require(self.trade_step == 2 || context().sender == self.backend_bot, "not add ton liquidity");
         self.trade_step = 3;
         emit(TradeStepEvent{trade_step: 3}.toCell());
         self.sendTonToWalletV4(self.this_balance, 1);
     }
 
     receive("add_meme_v4"){
-        require(self.trade_step == 3, "not add meme liquidity");
+        require(self.trade_step == 3 || context().sender == self.backend_bot, "not add meme liquidity");
         self.sendMemeToWalletV4(myAddress(), self.trade_config.proxy_ton, self.pool_token_amount, 1);
         self.trade_step = 4;
         emit(TradeStepEvent{trade_step: 4}.toCell());
     }
 
     receive("transferable") {
-        require(context().sender == self.owner, "not owner");
+        require(context().sender == self.backend_bot, "not backend bot");
         require(self.trade_step == 4, "liquidity not added");
         self.transferable = true;
         self.trade_step = 5;
         emit(TradeStepEvent{trade_step: 5}.toCell());
+    }
+
+    receive(msg: DirectAddLiquidity) {
+        require(context().sender == self.backend_bot, "not backend bot");
+        send(SendParameters{
+                to: msg.lp_account,
+                bounce: true,
+                value: 0,
+                mode: SendRemainingValue | SendIgnoreErrors,
+                body: beginCell()
+                        .storeUint(0x4cf82803, 32) // 0x4cf82803 is directAddLiquidity in ston.fi
+                        .storeUint(0, 64) // query_id
+                        .storeCoins(msg.amt0)
+                        .storeCoins(msg.amt1)
+                        .storeCoins(msg.min_lp_out)
+                      .endCell()
+            }
+        );
     }
 
     receive(msg: JettonTransferNotification) {}

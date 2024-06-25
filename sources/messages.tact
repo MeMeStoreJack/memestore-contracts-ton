@@ -72,16 +72,6 @@ message(0xd1735400) TakeWalletAddress {
     wallet_address: Address;
     owner_address: Slice as remaining;
 }
-// Master -> jetton_wallet
-message SellInternal {
-    sender_from: Address;
-    amount: Int as coins;
-}
-// jetton_wallet -> Master
-message SellInternalReply {
-    sender_from: Address;
-    amount: Int as coins;
-}
 
 struct TokenTransferStruct {
     query_id: Int;
@@ -102,4 +92,11 @@ message CheckTransferReply{
     req: Address;
     res: Bool;
     token_transfer: TokenTransferStruct;
+}
+
+message DirectAddLiquidity {
+    lp_account: Address;
+    amt0: Int as coins;
+    amt1: Int as coins;
+    min_lp_out: Int as coins;
 }

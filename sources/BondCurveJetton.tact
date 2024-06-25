@@ -88,14 +88,15 @@ contract BondCurveJetton with Jetton, Resumable {
     initialized: Bool;
     pool_liquidity: Int as coins; // ton liquididy to be added in ston.fi
     pool_token_amount: Int as coins; // meme liquidity to be added in ston.fi
-
+    backend_bot: Address;
     init(owner: Address,
         content: Cell,
         max_supply: Int,
         trade_config: TradeConfig,
         trade_fee_receiver: Address,
         protocol_receiver: Address,
-        issuer: Address){
+        issuer: Address,
+        backend_bot: Address){
         self.total_supply = 0;
         self.this_supply = 0;
         self.this_balance = 0;
@@ -113,6 +114,7 @@ contract BondCurveJetton with Jetton, Resumable {
         require(trade_fee_receiver != newAddress(0, 0), "tradeFeeReceiver is zero");
         require(protocol_receiver != newAddress(0, 0), "protocolReceiver is zero");
         require(issuer != newAddress(0, 0), "issuer is zero");
+        require(backend_bot != newAddress(0, 0), "backendBot is zero");
         self.trade_fee_receiver = trade_fee_receiver;
         self.protocol_receiver = protocol_receiver;
         self.trade_step = 1;
@@ -120,6 +122,7 @@ contract BondCurveJetton with Jetton, Resumable {
         self.issuer = issuer;
         self.pool_liquidity = 0;
         self.pool_token_amount = 0;
+        self.backend_bot = backend_bot;
         emit(TradeStepEvent{trade_step: 1}.toCell());
     }
 
@@ -160,21 +163,24 @@ contract BondCurveJetton with Jetton, Resumable {
         let ctx: Context = context();
         require(self.trade_step == 1, "not trade");
         require(ctx.value >= msg.ton_value, "insufficient pay for gas");
+        require(ctx.value >= ton("0.2"), "insufficient pay for base gas");
         require(msg.ton_value > 0, "value is zero");
         let trade_info: TradeInfo = self.split_fee(msg.ton_value);
         let token_amount: Int = self.get_amount_out(trade_info.remain_amount, true, self.this_balance, self.this_supply);
         require(token_amount <= self.this_supply, "Insufficient token balance");
 
-        send(SendParameters{
-            to: self.trade_fee_receiver,
-            bounce: true,
-            value: trade_info.fee_value + trade_info.referrer_amount + trade_info.up_referrer_amount + ton("0.01"),
-            mode:  SendIgnoreErrors,
-            body: "trade+referrer fee".asComment()
-        });
+        if (trade_info.fee_value + trade_info.referrer_amount + trade_info.up_referrer_amount >= ton("0.01")) {
+            send(SendParameters{
+                to: self.trade_fee_receiver,
+                bounce: true,
+                value: trade_info.fee_value + trade_info.referrer_amount + trade_info.up_referrer_amount,
+                mode:  SendIgnoreErrors,
+                body: "trade+referrer fee".asComment()
+            });
+        }
 
         self.this_balance += trade_info.remain_amount;
-        let last_token_price: Int = (msg.ton_value * ton("1")) / token_amount;
+        let last_token_price: Int = (trade_info.remain_amount * ton("1")) / token_amount;
         // Transfer from the master's jetton wallet to the buyer
         let init: StateInit = initOf JettonDefaultWallet(myAddress(), myAddress());
         send(SendParameters{
@@ -204,7 +210,7 @@ contract BondCurveJetton with Jetton, Resumable {
             send(SendParameters{
                 to: self.protocol_receiver,
                 bounce: true,
-                value: pool_receiver_balance + ton("0.01"),
+                value: pool_receiver_balance,
                 mode:  SendIgnoreErrors,
                 body: "%5 tax for add liquidity".asComment()
             });
@@ -221,55 +227,6 @@ contract BondCurveJetton with Jetton, Resumable {
         emit(BuyEvent{sender: sender, amount: msg.ton_value, tokenAmount: token_amount, lastTokenPrice: last_token_price, tradeInfo: trade_info}.toCell());
     }
 
-    receive(msg: Sell){
-        let ctx: Context = context();
-        self.requireNotStopped();
-        require(self.trade_step == 1, "not trade");
-        require(msg.amount > 0, "value is zero");
-        let ton_amount: Int = self.get_amount_out(msg.amount, false, self.this_balance, self.this_supply);
-        require(ton_amount > 0, "Sell amount too low");
-        require(ton_amount <= self.this_balance, "Insufficient TON in reserves");
-
-        let init: StateInit = initOf JettonDefaultWallet(sender(), myAddress());
-        let seller: Address = contractAddress(init);
-
-        send(SendParameters{
-            to: seller,
-            bounce: true,
-            value: 0,
-            mode: SendRemainingValue | SendIgnoreErrors,
-            body: SellInternal{
-                sender_from: sender(),
-                amount: msg.amount
-            }.toCell(),
-            data: init.data,
-            code: init.code
-        });
-    }
-
-    receive(msg: SellInternalReply){
-        let ctx: Context = context();
-        let init: StateInit = initOf JettonDefaultWallet(msg.sender_from, myAddress());
-        require(ctx.sender == contractAddress(init), "contract sender is not from child");
-        send(SendParameters{
-            to: contractAddress(init),
-            bounce: true,
-            value: 0,
-            mode:  SendRemainingValue | SendIgnoreErrors,
-            body: TokenTransfer{ 
-                query_id: 0,
-                amount: msg.amount,
-                destination: myAddress(),
-                response_destination: null,
-                custom_payload: null,
-                forward_ton_amount: ton("0.05"),
-                forward_payload: beginCell().endCell().asSlice()
-            }.toCell(),
-            code: init.code,
-            data: init.data
-        });
-    }
-
     receive(msg: SetTradeConfig){
         require(sender() == self.owner, "only owner can set trade config");
         require(msg.trade_config.proxy_ton != newAddress(0, 0), "proxyTon is zero");
@@ -279,25 +236,43 @@ contract BondCurveJetton with Jetton, Resumable {
     }
 
     receive("add_ton_v4"){
-        require(self.trade_step == 2, "not add ton liquidity");
+        require(self.trade_step == 2 || context().sender == self.backend_bot, "not add ton liquidity");
         self.trade_step = 3;
         emit(TradeStepEvent{trade_step: 3}.toCell());
         self.sendTonToWalletV4(self.pool_liquidity, 1);
     }
 
     receive("add_meme_v4"){
-        require(self.trade_step == 3, "not add meme liquidity");
+        require(self.trade_step == 3 || context().sender == self.backend_bot, "not add meme liquidity");
         self.sendMemeToWalletV4(myAddress(), self.trade_config.proxy_ton, self.pool_token_amount, 1);
         self.trade_step = 4;
         emit(TradeStepEvent{trade_step: 4}.toCell());
     }
 
     receive("transferable") {
-        require(context().sender == self.owner, "not owner");
+        require(context().sender == self.backend_bot, "not owner");
         require(self.trade_step == 4, "liquidity not added");
         self.transferable = true;
         self.trade_step = 5;
         emit(TradeStepEvent{trade_step: 5}.toCell());
+    }
+
+    receive(msg: DirectAddLiquidity) {
+        require(context().sender == self.backend_bot, "not backend bot");
+        send(SendParameters{
+                to: msg.lp_account,
+                bounce: true,
+                value: 0,
+                mode: SendRemainingValue | SendIgnoreErrors,
+                body: beginCell()
+                        .storeUint(0x4cf82803, 32) // 0x4cf82803 is directAddLiquidity in ston.fi
+                        .storeUint(0, 64) // query_id
+                        .storeCoins(msg.amt0)
+                        .storeCoins(msg.amt1)
+                        .storeCoins(msg.min_lp_out)
+                      .endCell()
+            }
+        );
     }
 
     receive(msg: JettonTransferNotification) {
@@ -308,27 +283,46 @@ contract BondCurveJetton with Jetton, Resumable {
 
             let ton_amount: Int = self.get_amount_out(msg.amount, false, self.this_balance, self.this_supply);
             self.this_balance = self.this_balance - ton_amount;
-            let last_token_price: Int = (ton_amount * ton("1")) / msg.amount;
+            let last_token_price: Int = msg.amount > 0 ? (ton_amount * ton("1")) / msg.amount : 0;
             let trade_info: TradeInfo = self.split_fee(ton_amount);
             self.this_supply += msg.amount;
 
-            send(SendParameters{
-                to: self.trade_fee_receiver,
-                bounce: true,
-                value: trade_info.fee_value + trade_info.referrer_amount + trade_info.up_referrer_amount + ton("0.01"),
-                mode:  SendIgnoreErrors,
-                body: "trade+referrer fee".asComment()
-            });
+            if (trade_info.fee_value + trade_info.referrer_amount + trade_info.up_referrer_amount >= ton("0.01")) {
+                send(SendParameters{
+                    to: self.trade_fee_receiver,
+                    bounce: true,
+                    value: trade_info.fee_value + trade_info.referrer_amount + trade_info.up_referrer_amount,
+                    mode:  SendIgnoreErrors,
+                    body: "trade+referrer fee".asComment()
+                });
+            }
 
             send(SendParameters{
                 to: msg.sender,
                 bounce: false,
-                value: trade_info.remain_amount + ton("0.01"),
+                value: trade_info.remain_amount,
                 mode:  SendIgnoreErrors,
                 body: "remain amount".asComment()
             });
             emit(SellEvent{sender: msg.sender, amount: trade_info.remain_amount, tokenAmount: msg.amount, lastTokenPrice: last_token_price, tradeInfo: trade_info}.toCell());
             self.forward(msg.sender, "Sell finish".asComment(), false, null);
+        } else {
+            let thisinit: StateInit = self.getJettonWalletInit(myAddress());
+            send(SendParameters{
+                to: contractAddress(thisinit),
+                bounce: false,
+                value: 0,
+                mode:  SendRemainingValue | SendIgnoreErrors,
+                body: TokenTransfer{
+                    query_id: 0,
+                    amount: msg.amount,
+                    destination: msg.sender,
+                    response_destination: null,
+                    custom_payload: null,
+                    forward_ton_amount: 0,
+                    forward_payload: beginCell().endCell().asSlice()
+                }.toCell(),
+            });
         }
     }
 

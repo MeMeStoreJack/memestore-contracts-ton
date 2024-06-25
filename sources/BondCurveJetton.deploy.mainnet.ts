@@ -23,8 +23,6 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
         $$type: "TradeConfig",
         proxy_ton: Address.parse("EQCM3B12QK1e4yZSf8GtBRT0aLMNyEsBc_DhVfRRtOEffLez"), // mainnet proxy ton
         swap_router: Address.parse("EQB3ncyBUTjZUA5EnFKR5_EnOMI9V1tTEAAPaiU71gc4TiUt"),
-        // target_amount: toNano("4"),
-        // trade_a: toNano("1.2"),
         target_amount: toNano("0.02"),
         trade_a: toNano("10"),
         ton_value_add_meme: toNano("0.4"),
@@ -58,7 +56,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
     // Compute init data for deployment
     // NOTICE: the parameters inside the init functions were the input for the contract address
     // which means any changes will change the smart contract address as well
-    let init = await BondCurveJetton.init(deployer_wallet_contract.address, content, max_supply, trade_config, deployer_wallet_contract.address, deployer_wallet_contract.address, deployer_wallet_contract.address);
+    let init = await BondCurveJetton.init(deployer_wallet_contract.address, content, max_supply, trade_config, deployer_wallet_contract.address, deployer_wallet_contract.address, deployer_wallet_contract.address, deployer_wallet_contract.address);
     let jettonMaster = contractAddress(workchain, init);
     // let deployAmount = toNano("0.3");
     // let deployAmount = toNano("0.82");

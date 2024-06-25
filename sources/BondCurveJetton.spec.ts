@@ -31,7 +31,7 @@ let trade_config: TradeConfig = {
     swap_router: Address.parse("EQDW_iCkT4kdaU3WiltCN1bzwq5ST--yFXpVgyuMAYb3rvQu"),
     target_amount: toNano("4"),
     trade_a: toNano("1.6"),
-    ton_value_add_meme: toNano("0.3"),
+    ton_value_add_meme: toNano("0.5"),
     ton_value_add_pton: toNano("0.3"),
     trade_fee_percent: 10n, // 10 / 1000
     referrer_percent: 3n, // 3 / 1000
@@ -60,11 +60,11 @@ describe("BondCurveJetton", () => {
         trade_fee_receiver = deployer.address;
         protocol_receiver = deployer.address;
 
-        token = blockchain.openContract(await BondCurveJetton.fromInit(deployer.address, content, max_supply, trade_config, trade_fee_receiver, protocol_receiver, deployer.address));
+        token = blockchain.openContract(await BondCurveJetton.fromInit(deployer.address, content, max_supply, trade_config, trade_fee_receiver, protocol_receiver, deployer.address, deployer.address));
         const initialize: Initialize = {
             $$type: "Initialize",
             this_supply: 1_000_000_000_000_000_000n,
-            buy_ton_value: toNano("0.02"),
+            buy_ton_value: toNano("0.01"),
             max_buy_percent: 13n, // 1.3%
         }
 
@@ -86,12 +86,12 @@ describe("BondCurveJetton", () => {
         });
         printTransactionFees(initResult.transactions);
 
-        // const initDeployerWalletResult = await token.send(deployer.getSender(), { value: toNano("0.3") }, "init_jetton_wallet");
-        // expect(initDeployerWalletResult.transactions).toHaveTransaction({
-        //     from: deployer.address,
-        //     to: token.address,
-        //     success: true,
-        // });
+        const initDeployerWalletResult = await token.send(deployer.getSender(), { value: toNano("0.3") }, "init_jetton_wallet");
+        expect(initDeployerWalletResult.transactions).toHaveTransaction({
+            from: deployer.address,
+            to: token.address,
+            success: true,
+        });
         const deployerWallet = await token.getGetWalletAddress(deployer.address);
         jettonWallet = blockchain.openContract(JettonDefaultWallet.fromAddress(deployerWallet));
 
@@ -122,10 +122,11 @@ describe("BondCurveJetton", () => {
         console.log("Total Supply Before Buy: " + fromNano(totalSupplyBefore));
         const buy: Buy = {
             $$type: "Buy",
-            ton_value: toNano("0.12"), // 25000000 * 1e9 / 672354948805460750
+            ton_value: toNano("0.1"),
         };
 
-        const buyResult = await token.send(deployer.getSender(), { value: toNano("0.82") }, buy);
+        const estimateBuyAmount = await token.getInitBuyTokenAmount(buy.ton_value);
+        const buyResult = await token.send(deployer.getSender(), { value: toNano("0.62") }, buy);
         printTransactionFees(buyResult.transactions);
         expect(buyResult.transactions).toHaveTransaction({
             from: deployer.address,
@@ -153,7 +154,7 @@ describe("BondCurveJetton", () => {
         let tonBalanceBefore = await token.getThisBalance();
         const buyResult = await token.send(deployer.getSender(), { value: toNano("0.3") }, {
             $$type: "Buy",
-            ton_value: toNano("0.02"),
+            ton_value: toNano("0.03"),
         });
         expect(buyResult.transactions).toHaveTransaction({
             from: deployer.address,
@@ -187,13 +188,24 @@ describe("BondCurveJetton", () => {
         console.log("Balance Before Sell: " + fromNano(balanceBeforeSell));
         let sellTimes = 1;
         for (let i = 0; i < sellTimes; i++) {
-            const sellResult = await token.send(deployer.getSender(), { value: toNano("0.51") }, {
-                $$type: "Sell",
+            const estimateSellResult = await token.getEstimateSellResult(buyAmount / BigInt(sellTimes));
+            console.log(estimateSellResult);
+
+            const sellerJettonWalletAddress = await token.getGetWalletAddress(deployer.address);
+            const sellerJettonWalletContrct = blockchain.openContract(JettonDefaultWallet.fromAddress(sellerJettonWalletAddress));
+            const sellResult = await sellerJettonWalletContrct.send(deployer.getSender(), { value: toNano("0.42") }, {
+                $$type: "TokenTransfer",
+                query_id: 0n,
                 amount: buyAmount / BigInt(sellTimes),
+                destination: token.address,
+                response_destination: null,
+                custom_payload: null,
+                forward_ton_amount: toNano("0.05"),
+                forward_payload: beginCell().endCell(),
             });
             expect(sellResult.transactions).toHaveTransaction({
                 from: deployer.address,
-                to: token.address,
+                to: sellerJettonWalletAddress,
                 success: true,
             });
             printTransactionFees(sellResult.transactions);
@@ -209,7 +221,7 @@ describe("BondCurveJetton", () => {
 
         let tonBalanceAfter = await token.getThisBalance();
         const thisSupplySell = await token.getThisSupply();
-        console.log("EPS in BondCurveMEME: ", fromNano(tokenBalanceBefore - tonBalanceAfter));
+        console.log("EPS in BondCurveMEME: ", fromNano(tonBalanceBefore - tonBalanceAfter));
 
         console.log("This Supply after Sell: " + fromNano(thisSupplySell));
     });
@@ -224,14 +236,16 @@ describe("BondCurveJetton", () => {
         let firstPrice = "";
         let lastPrice = "";
         for (let i = 0; i < n; i++) {
-            const buyTonValue = toNano("0.02");
+            const buyTonValue = toNano("0.1");
             const buy: Buy = {
                 $$type: "Buy",
                 ton_value: buyTonValue,
             };
 
             let balanceBefore = (await jettonWallet.getGetWalletData()).balance;
-            const buyResult = await token.send(buyer.getSender(), { value: toNano("0.35") + buyTonValue }, buy);
+            const estimateBuyAmount = await token.getInitBuyTokenAmount(buyTonValue);
+            console.log("estimateBuyAmount: " + fromNano(estimateBuyAmount));
+            const buyResult = await token.send(buyer.getSender(), { value: toNano("0.52") + buyTonValue }, buy);
             expect(buyResult.transactions).toHaveTransaction({
                 from: buyer.address,
                 to: token.address,
@@ -239,16 +253,8 @@ describe("BondCurveJetton", () => {
             });
             let balanceAfter = (await jettonWallet.getGetWalletData()).balance;
             let buyAmount = balanceAfter - balanceBefore;
-
-            // const sellResult = await token.send(buyer.getSender(), { value: toNano("0.34") + toNano("0.01")  }, {
-            //     $$type: "Sell",
-            //     amount: buyAmount,
-            // });
-            // expect(sellResult.transactions).toHaveTransaction({
-            //     from: buyer.address,
-            //     to: token.address,
-            //     success: true,
-            // });
+            console.log(`#${i}: ${fromNano(buyAmount)}`);
+            expect(estimateBuyAmount).toEqual(buyAmount);
 
             totalTonAmount += buyTonValue;
             totalMemeAmount += buyAmount;
@@ -277,16 +283,11 @@ describe("BondCurveJetton", () => {
         // expect(totalSupplyBefore).toEqual(totalSupplyAfter);
         const thisSupply = await token.getThisSupply();
         console.log("This Supply after buy: " + fromNano(thisSupply));
-
-        // const walletData = await jettonWallet.getGetWalletData();
-        // expect(walletData.owner).toEqualAddress(deployer.address);
-        // console.log("Wallet Balance After Buy: " + fromNano(walletData.balance));
-        // expect(walletData.balance).toBeGreaterThanOrEqual(mintAmount);
     }
 
     it("Buy batch", async () => {
         // return;
-        // await buyBatch(407, deployer, jettonWallet);
+        // await buyBatch(1700, deployer, jettonWallet);
     });
 
     it("Player Buy batch", async () => {

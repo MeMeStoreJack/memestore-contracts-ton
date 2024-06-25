@@ -1,4 +1,4 @@
-import { beginCell, contractAddress, toNano, TonClient4, WalletContractV4, internal, fromNano, Address } from "@ton/ton";
+import { beginCell, contractAddress, toNano, TonClient4, WalletContractV4, internal, fromNano, Address, Cell } from "@ton/ton";
 import { mnemonicToPrivateKey } from "ton-crypto";
 import { buildOnchainMetadata } from "./utils/jetton-helpers";
 
@@ -11,6 +11,10 @@ dotenv.config();
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+type BodyValue = {
+    body: string | Cell,
+    value: bigint,
+}
 
 (async () => {
     //create client for testnet sandboxv4 API - alternative endpoint
@@ -23,14 +27,14 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
         $$type: "TradeConfig",
         proxy_ton: Address.parse("kQAcOvXSnnOhCdLYc6up2ECYwtNNTzlmOlidBeCs5cFPV7AM"), // testnet proxy ton
         swap_router: Address.parse("EQBsGx9ArADUrREB34W-ghgsCgBShvfUr4Jvlu-0KGc33Rbt"),
-        target_amount: toNano("4"),
-        trade_a: toNano("1.6"),
-        ton_value_add_meme: toNano("0.3"),
+        target_amount: toNano("0.4"),
+        trade_a: toNano("0.16"),
+        ton_value_add_meme: toNano("0.5"),
         ton_value_add_pton: toNano("0.3"),
         trade_fee_percent: 10n, // 10 / 1000
         referrer_percent: 3n, // 3 / 1000
         up_referrer_percent: 2n, // 2 / 1000
-        router_pton_wallet: Address.parse("EQARULUYsmJq1RiZ-YiH-IJLcAZUVkVff-KBPwEmmaQGH6aC"), // mainnet router pton wallet
+        router_pton_wallet: Address.parse("kQCdC2b1GG1saybYxCwRfEqr4WlOexsQIcYcfMYObk_477vs"), // testnet router pton wallet
     }
 
     let mnemonics = (process.env.mnemonics_2 || "").toString(); // 🔴 Change to your own, by creating .env file!
@@ -56,7 +60,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
     // Compute init data for deployment
     // NOTICE: the parameters inside the init functions were the input for the contract address
     // which means any changes will change the smart contract address as well
-    let init = await BondCurveJetton.init(deployer_wallet_contract.address, content, max_supply, trade_config, deployer_wallet_contract.address, deployer_wallet_contract.address, deployer_wallet_contract.address);
+    let init = await BondCurveJetton.init(deployer_wallet_contract.address, content, max_supply, trade_config, deployer_wallet_contract.address, deployer_wallet_contract.address, deployer_wallet_contract.address, deployer_wallet_contract.address);
     let jettonMaster = contractAddress(workchain, init);
 
     let supply = toNano(1000000000); // 🔴 Specify total supply in nano
@@ -66,7 +70,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
                 $$type: "Initialize",
                 this_supply: 1_000_000_000_000_000_000n,
                 buy_ton_value: toNano("0.02"),
-                max_buy_percent: 50n,
+                max_buy_percent: 1000n,
             })
         )
         .endCell();
@@ -75,7 +79,7 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
         .store(
             storeBuy({
                 $$type: "Buy",
-                ton_value: toNano("0.02"),
+                ton_value: toNano("0.2"),
             })
         )
         .endCell();
@@ -100,8 +104,27 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
     console.log("Current deployment wallet balance = ", fromNano(balance).toString(), "💎TON");
     printSeparator();
 
-    let bodies = [packed_msg, packed_buy_msg, packed_sell_msg];
-    let deployAmounts = [toNano("0.52"), toNano("0.51"), toNano("0.51")]
+    let bodies: BodyValue[] = [
+        {
+            body: packed_msg,
+            value: toNano("0.52"),
+        },{
+            body: packed_buy_msg,
+            value: toNano("0.76"),
+        },{
+            body: packed_buy_msg,
+            value: toNano("0.76"),
+        },{
+            body: "add_ton_v4",
+            value: toNano("0.54"),
+        },{
+            body: "add_meme_v4",
+            value: toNano("0.7"),
+        },{
+            body: "transferable",
+            value: toNano("0.1"),
+        }
+    ];
     for (let i = 0; i < bodies.length; i++) {
         await deployer_wallet_contract.sendTransfer({
             seqno: seqno + i,
@@ -109,12 +132,12 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
             messages: [
                 internal({
                     to: jettonMaster,
-                    value: deployAmounts[i],
+                    value: bodies[i].value,
                     init: {
                         code: init.code,
                         data: init.data,
                     },
-                    body: bodies[i],
+                    body: bodies[i].body,
                 }),
             ],
         });

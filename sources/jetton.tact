@@ -317,28 +317,21 @@ contract JettonDefaultWallet
         );
     }
 
-    receive(msg: SellInternal){
-        let ctx: Context = context();
-        require(ctx.sender == self.master, "contract_from is not jetton master");
-        require(msg.sender_from == self.owner, "sender_from is not owner");
-        require(msg.amount > 0, "amount is not positive");
-        require(msg.amount <= self.balance, "insufficient balance to sell");
-        send(SendParameters{
-                to: self.master,
-                bounce: true,
-                value: 0,
-                mode: SendRemainingValue | SendIgnoreErrors,
-                body: SellInternalReply{sender_from: self.owner, amount: msg.amount}.toCell()
-            }
-        );
-    }
-
     receive(msg: CheckTransferReply) {
         let ctx: Context = context();
         require(ctx.sender == self.master, "transfer_check_from is not jetton master");
         self.transferable = msg.res;
         if (msg.res) {
             self.token_transfer(msg.token_transfer);
+        } else {
+            send(SendParameters{
+                    to: msg.req,
+                    value: 0,
+                    bounce: true,
+                    mode: SendRemainingValue | SendIgnoreErrors,
+                    body: "not transferable".asComment()
+                }
+            );
         }
     }
 
