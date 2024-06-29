@@ -143,7 +143,7 @@ contract BondCurveJetton with Jetton, Resumable {
         self.initialized = true;
         emit(TradeStepEvent{trade_step: self.trade_step}.toCell());
         if (msg.buy_ton_value > 0) {
-            require(context().value >= msg.buy_ton_value + ton("0.5"), "insufficient pay for gas");
+            require(context().value >= msg.buy_ton_value + ton("0.4"), "insufficient pay for gas");
             require(msg.max_buy_percent <= 1000, "percent must be <= 1000");
             require(msg.buy_ton_value * 1000 <= self.trade_config.target_amount * msg.max_buy_percent, "exceed max percent"); // buy_ton_value / target_amount <= max_buy_percent / 1000
             self.buy(Buy{ton_value: msg.buy_ton_value}, self.issuer);
@@ -162,8 +162,7 @@ contract BondCurveJetton with Jetton, Resumable {
         self.requireNotStopped();
         let ctx: Context = context();
         require(self.trade_step == 1, "not trade");
-        require(ctx.value >= msg.ton_value, "insufficient pay for gas");
-        require(ctx.value >= ton("0.2"), "insufficient pay for base gas");
+        require(ctx.value >= ton("0.3") + msg.ton_value, "insufficient pay for base gas");
         require(msg.ton_value > 0, "value is zero");
         let trade_info: TradeInfo = self.split_fee(msg.ton_value);
         let token_amount: Int = self.get_amount_out(trade_info.remain_amount, true, self.this_balance, self.this_supply);
@@ -186,7 +185,7 @@ contract BondCurveJetton with Jetton, Resumable {
         send(SendParameters{
             to: contractAddress(init),
             bounce: true,
-            value: ton("0.2"),
+            value: ton("0.15"),
             mode:  SendIgnoreErrors,
             body: TokenTransfer{
                 query_id: 0,
@@ -203,9 +202,6 @@ contract BondCurveJetton with Jetton, Resumable {
 
         self.this_supply -= token_amount;
         if (self.this_balance >= self.trade_config.target_amount) {
-            self.trade_step = 2;
-            emit(TradeStepEvent{trade_step: 2}.toCell());
-
             let pool_receiver_balance: Int = self.this_balance * 5 / 100;
             send(SendParameters{
                 to: self.protocol_receiver,
@@ -219,12 +215,15 @@ contract BondCurveJetton with Jetton, Resumable {
             self.pool_token_amount = self.pool_liquidity * ton("1") / last_token_price;
 
             if (self.this_supply > self.pool_token_amount) {
-                self.burn(myAddress(), self.this_supply - self.pool_token_amount, self.owner); // (from, amount, response_destination)
+                self.burn(myAddress(), self.this_supply - self.pool_token_amount, myAddress()); // (from, amount, response_destination)
             } else {
                 self.mint(myAddress(), self.pool_token_amount - self.this_supply, self.owner); // (to, amount, response_destination)
             }
+            self.trade_step = 2;
+            emit(TradeStepEvent{trade_step: 2}.toCell());
         }
         emit(BuyEvent{sender: sender, amount: msg.ton_value, tokenAmount: token_amount, lastTokenPrice: last_token_price, tradeInfo: trade_info}.toCell());
+        self.forward(sender, "Buy finish".asComment(), false, null);
     }
 
     receive(msg: SetTradeConfig){
@@ -394,8 +393,8 @@ contract BondCurveJetton with Jetton, Resumable {
         send(SendParameters{
             to: self.trade_config.router_pton_wallet,
             bounce: false,
-            value: 0,
-            mode: SendRemainingValue | SendIgnoreErrors,
+            value: ton_amount + ton("0.26"),
+            mode: SendIgnoreErrors,
             body: TokenTransfer {
                 query_id: 0,
                 amount: ton_amount,

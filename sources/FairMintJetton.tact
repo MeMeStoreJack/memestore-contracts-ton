@@ -89,7 +89,7 @@ contract FairMintJetton with Jetton, Resumable {
         require(self.mintable, "Not mintable");
         require((self.total_supply + msg.amount) <= self.mint_config.mint_supply, "total exceed mintSupply");
         require(msg.ton_value * ton("1") >= self.mint_config.mint_price * msg.amount, "insufficient pay");
-        require(ctx.value >= msg.ton_value, "insufficient pay for gas");
+        require(ctx.value >= ton("0.2") + msg.ton_value, "insufficient pay for gas");
         require(now() <= self.mint_config.end_timestamp, "Expired");
         if (msg.ton_value * 5 / 100 >= ton("0.01")) {
             send(SendParameters{
@@ -104,12 +104,13 @@ contract FairMintJetton with Jetton, Resumable {
         self.this_balance += (msg.ton_value - msg.ton_value * 5 / 100);
         self.mint(msg.receiver, msg.amount, self.owner);
         if ((self.total_supply + self.mint_config.single_mint_min) > self.mint_config.mint_supply) {
-            self.trade_step = 2;
-            emit(TradeStepEvent{trade_step: self.trade_step}.toCell());
             self.pool_token_amount = self.this_balance * ton("1") / self.mint_config.liquidity_price;
             self.mint(myAddress(), self.pool_token_amount, self.owner);
+            self.trade_step = 2;
+            emit(TradeStepEvent{trade_step: self.trade_step}.toCell());
         }
         emit(FairMintEvent{sender: ctx.sender, amount: msg.amount}.toCell());
+        self.forward(ctx.sender, "fairmint refund".asComment(), false, null);
     }
 
     receive("createPoolWithExpired"){
@@ -199,8 +200,8 @@ contract FairMintJetton with Jetton, Resumable {
         send(SendParameters{
                 to: self.trade_config.router_pton_wallet,
                 bounce: false,
-                value: 0,
-                mode: SendRemainingValue | SendIgnoreErrors,
+                value: ton_amount + ton("0.26"),
+                mode: SendIgnoreErrors,
                 body: TokenTransfer {
                     query_id: 0,
                     amount: ton_amount,

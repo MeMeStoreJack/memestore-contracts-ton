@@ -98,7 +98,7 @@ trait Jetton with Ownable, Deployable {
         let winit: StateInit = self.getJettonWalletInit(to); // Create message
         send(SendParameters{
                 to: contractAddress(winit),
-                value: ton("0.1"),
+                value: ton("0.15"),
                 bounce: true,
                 mode: SendIgnoreErrors,
                 body: TokenTransferInternal{
@@ -120,9 +120,9 @@ trait Jetton with Ownable, Deployable {
         let winit: StateInit = self.getJettonWalletInit(to);
         send(SendParameters{
                 to: contractAddress(winit),
-                value: 0,
                 bounce: true,
-                mode: SendRemainingValue,
+                value: ton("0.15"),
+                mode: SendIgnoreErrors,
                 body: TokenBurn{
                     query_id: 0,
                     amount: amount,
@@ -160,6 +160,10 @@ trait Jetton with Ownable, Deployable {
 
     get fun get_wallet_address(owner: Address): Address {
         return contractAddress(initOf JettonDefaultWallet(owner, myAddress()));
+    }
+
+    get fun transferable(): Bool {
+        return self.transferable;
     }
 }
 
@@ -215,6 +219,28 @@ contract JettonDefaultWallet
                 }
             );
         }
+    }
+
+    receive("check_transferable") {
+        send(SendParameters{
+                to: self.master,
+                value: 0,
+                bounce: true,
+                mode: SendRemainingValue | SendIgnoreErrors,
+                body: CheckTransfer{
+                    req: context().sender,
+                    token_transfer: TokenTransferStruct {
+                        query_id: 0,
+                        amount: 0,
+                        destination: self.owner,
+                        response_destination: self.owner,
+                        custom_payload: null,
+                        forward_ton_amount: 0,
+                        forward_payload: beginCell().endCell().asSlice(),
+                    }
+                }.toCell()
+            }
+        );
     }
 
     fun token_transfer(msg: TokenTransferStruct) {
@@ -304,8 +330,8 @@ contract JettonDefaultWallet
         // Burn tokens
         send(SendParameters{
                 to: self.master,
-                value: 0,
-                mode: SendRemainingValue,
+                value: ton("0.1"),
+                mode: SendIgnoreErrors,
                 bounce: true,
                 body: TokenBurnNotification{
                     query_id: msg.query_id,
@@ -359,5 +385,9 @@ contract JettonDefaultWallet
                 master: self.master,
                 code: initOf JettonDefaultWallet(self.owner, self.master).code
             };
+    }
+
+    get fun transferable(): Bool {
+        return self.transferable;
     }
 }
