@@ -110,7 +110,6 @@ contract FairMintJetton with Jetton, Resumable {
             emit(TradeStepEvent{trade_step: self.trade_step}.toCell());
         }
         emit(FairMintEvent{sender: ctx.sender, amount: msg.amount}.toCell());
-        self.forward(ctx.sender, "fairmint refund".asComment(), false, null);
     }
 
     receive("createPoolWithExpired"){

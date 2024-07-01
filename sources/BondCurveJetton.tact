@@ -222,8 +222,8 @@ contract BondCurveJetton with Jetton, Resumable {
             self.trade_step = 2;
             emit(TradeStepEvent{trade_step: 2}.toCell());
         }
+        last_token_price = ton("0.000985") * ton("1") / self.init_buy_amount(ton("0.001"));
         emit(BuyEvent{sender: sender, amount: msg.ton_value, tokenAmount: token_amount, lastTokenPrice: last_token_price, tradeInfo: trade_info}.toCell());
-        self.forward(sender, "Buy finish".asComment(), false, null);
     }
 
     receive(msg: SetTradeConfig){
@@ -282,7 +282,6 @@ contract BondCurveJetton with Jetton, Resumable {
 
             let ton_amount: Int = self.get_amount_out(msg.amount, false, self.this_balance, self.this_supply);
             self.this_balance = self.this_balance - ton_amount;
-            let last_token_price: Int = msg.amount > 0 ? (ton_amount * ton("1")) / msg.amount : 0;
             let trade_info: TradeInfo = self.split_fee(ton_amount);
             self.this_supply += msg.amount;
 
@@ -303,6 +302,7 @@ contract BondCurveJetton with Jetton, Resumable {
                 mode:  SendIgnoreErrors,
                 body: "remain amount".asComment()
             });
+            let last_token_price: Int = ton("0.000985") * ton("1") / self.init_buy_amount(ton("0.001"));
             emit(SellEvent{sender: msg.sender, amount: trade_info.remain_amount, tokenAmount: msg.amount, lastTokenPrice: last_token_price, tradeInfo: trade_info}.toCell());
             self.forward(msg.sender, "Sell finish".asComment(), false, null);
         } else {
