@@ -1,0 +1,36 @@
+{
+    "projects": [
+        {
+            "name": "ReferrerParent",
+            "path": "./sources/ReferrerParent.tact",
+            "output": "./sources/output",
+            "options": {
+                "debug": true
+            }
+        },
+        {
+            "name": "Payouts",
+            "path": "./sources/Payouts.tact",
+            "output": "./sources/output",
+            "options": {
+                "debug": true
+            }
+        },
+        {
+            "name": "JettonPayouts",
+            "path": "./sources/JettonPayouts.tact",
+            "output": "./sources/output",
+            "options": {
+                "debug": true
+            }
+        },
+        {
+            "name": "JettonUSDT",
+            "path": "./sources/JettonUSDT.tact",
+            "output": "./sources/output",
+            "options": {
+                "debug": true
+            }
+        }
+    ]
+}

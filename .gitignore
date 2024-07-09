@@ -1,0 +1,14 @@
+node_modules
+temp
+dist
+.DS_Store
+sources/output/*.boc
+sources/output/*.fc
+sources/output/*.fif
+sources/output/*.md
+sources/output/*.pkg
+sources/output/*.abi
+yarn.lock
+.env
+.vscode
+package-lock.json
